@@ -88,7 +88,7 @@ final class DibiConnectionFetchDynamicReturnTypeExtension implements DynamicMeth
                 return null;
             }
 
-            $fetchResultType = $this->reduceResultType($methodReflection, $resultType);
+            $fetchResultType = $this->reduceResultType($methodReflection, $resultType, $queryString);
             if (null === $fetchResultType) {
                 return null;
             }
@@ -106,7 +106,7 @@ final class DibiConnectionFetchDynamicReturnTypeExtension implements DynamicMeth
         return null;
     }
 
-    private function reduceResultType(MethodReflection $methodReflection, Type $resultType): ?Type
+    private function reduceResultType(MethodReflection $methodReflection, Type $resultType, string $queryString): ?Type
     {
         $methodName = $methodReflection->getName();
 
@@ -117,6 +117,10 @@ final class DibiConnectionFetchDynamicReturnTypeExtension implements DynamicMeth
         } elseif ('fetchPairs' === $methodName && $resultType instanceof ConstantArrayType && 2 === \count($resultType->getValueTypes())) {
             return new ArrayType($resultType->getValueTypes()[0], $resultType->getValueTypes()[1]);
         } elseif ('fetchSingle' === $methodName && $resultType instanceof ConstantArrayType && 1 === \count($resultType->getValueTypes())) {
+            if (str_starts_with(strtolower($queryString), 'select count(')) {
+                return $resultType->getValueTypes()[0];
+            }
+
             return TypeCombinator::addNull($resultType->getValueTypes()[0]);
         }
 
