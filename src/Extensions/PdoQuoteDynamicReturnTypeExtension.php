@@ -24,10 +24,7 @@ use staabm\PHPStanDba\UnresolvableQueryException;
 
 final class PdoQuoteDynamicReturnTypeExtension implements DynamicMethodReturnTypeExtension
 {
-    /**
-     * @var PhpVersion
-     */
-    private $phpVersion;
+    private PhpVersion $phpVersion;
 
     public function __construct(PhpVersion $phpVersion)
     {
@@ -47,7 +44,11 @@ final class PdoQuoteDynamicReturnTypeExtension implements DynamicMethodReturnTyp
     public function getTypeFromMethodCall(MethodReflection $methodReflection, MethodCall $methodCall, Scope $scope): Type
     {
         $args = $methodCall->getArgs();
-        $defaultReturn = ParametersAcceptorSelector::selectSingle($methodReflection->getVariants())->getReturnType();
+        $defaultReturn = ParametersAcceptorSelector::selectFromArgs(
+            $scope,
+            $methodCall->getArgs(),
+            $methodReflection->getVariants()
+        )->getReturnType();
 
         if (QueryReflection::getRuntimeConfiguration()->throwsPdoExceptions($this->phpVersion)) {
             $defaultReturn = TypeCombinator::remove($defaultReturn, new ConstantBooleanType(false));

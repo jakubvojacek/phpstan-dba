@@ -7,8 +7,8 @@ namespace staabm\PHPStanDba\QueryReflection;
 use Composer\InstalledVersions;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\BinaryOp\Concat;
-use PhpParser\Node\Scalar\Encapsed;
-use PhpParser\Node\Scalar\EncapsedStringPart;
+use PhpParser\Node\InterpolatedStringPart;
+use PhpParser\Node\Scalar\InterpolatedString;
 use PHPStan\Analyser\Scope;
 use PHPStan\ShouldNotHappenException;
 use PHPStan\TrinaryLogic;
@@ -16,7 +16,6 @@ use PHPStan\Type\Accessory\AccessoryNumericStringType;
 use PHPStan\Type\Constant\ConstantArrayType;
 use PHPStan\Type\Constant\ConstantArrayTypeBuilder;
 use PHPStan\Type\Constant\ConstantIntegerType;
-use PHPStan\Type\Constant\ConstantStringType;
 use PHPStan\Type\FloatType;
 use PHPStan\Type\IntegerType;
 use PHPStan\Type\IntersectionType;
@@ -42,24 +41,15 @@ final class QueryReflection
     // see https://github.com/php/php-src/blob/01b3fc03c30c6cb85038250bb5640be3a09c6a32/ext/pdo/pdo_sql_parser.re#L48
     private const NAMED_PATTERN = ':[a-zA-Z0-9_]+';
 
-    private const REGEX_UNNAMED_PLACEHOLDER = '{(["\'])([^"\']*\1)|(' . self::UNNAMED_PATTERN . ')}';
+    private const REGEX_UNNAMED_PLACEHOLDER = '{(["\'])((?:(?!\1)(?s:.))*\1)|(' . self::UNNAMED_PATTERN . ')}';
 
-    private const REGEX_NAMED_PLACEHOLDER = '{(["\'])([^"\']*\1)|(' . self::NAMED_PATTERN . ')}';
+    private const REGEX_NAMED_PLACEHOLDER = '{(["\'])((?:(?!\1)(?s:.))*\1)|(' . self::NAMED_PATTERN . ')}';
 
-    /**
-     * @var QueryReflector|null
-     */
-    private static $reflector;
+    private static ?QueryReflector $reflector = null;
 
-    /**
-     * @var RuntimeConfiguration|null
-     */
-    private static $runtimeConfiguration;
+    private static ?RuntimeConfiguration $runtimeConfiguration = null;
 
-    /**
-     * @var SchemaReflection
-     */
-    private $schemaReflection;
+    private ?SchemaReflection $schemaReflection = null;
 
     public function __construct(?DbaApi $dbaApi = null)
     {
@@ -77,6 +67,7 @@ final class QueryReflection
 
     public function validateQueryString(string $queryString): ?Error
     {
+        $queryString = QuerySimulation::stripComments($queryString);
         $queryType = self::getQueryType($queryString);
 
         if (self::getRuntimeConfiguration()->isAnalyzingWriteQueries()) {
@@ -110,17 +101,21 @@ final class QueryReflection
      */
     public function getResultType(string $queryString, int $fetchType): ?Type
     {
+        $queryString = QuerySimulation::stripComments($queryString);
+
         if ('SELECT' !== self::getQueryType($queryString)) {
             return null;
         }
 
         $reflector = self::reflector();
         $resultType = $reflector->getResultType($queryString, $fetchType);
+        if ($resultType === null) {
+            return null;
+        }
+        $arrays = $resultType->getConstantArrays();
 
-        if (null !== $resultType) {
-            if (! $resultType instanceof ConstantArrayType) {
-                throw new ShouldNotHappenException();
-            }
+        if (count($arrays) === 1) {
+            $resultType = $arrays[0];
 
             if (
                 self::getRuntimeConfiguration()->isUtilizingSqlAst()
@@ -145,9 +140,11 @@ final class QueryReflection
 
     private function stringifyResult(Type $type): Type
     {
-        if (! $type instanceof ConstantArrayType) {
+        $arrays = $type->getConstantArrays();
+        if (count($arrays) !== 1) {
             return $type;
         }
+        $type = $arrays[0];
 
         $builder = ConstantArrayTypeBuilder::createEmpty();
 
@@ -210,7 +207,7 @@ final class QueryReflection
         }
         $isStringOrMixed = $type->isSuperTypeOf(new StringType());
 
-        return $isStringOrMixed->negate();
+        return $isStringOrMixed->negate()->result;
     }
 
     /**
@@ -271,7 +268,7 @@ final class QueryReflection
      *
      * @throws UnresolvableQueryException
      */
-    public function resolveQueryStrings(Expr $queryExpr, Scope $scope): iterable
+    public function resolveQueryStrings(Expr $queryExpr, Scope $scope, bool $resolveNonConstantQueries = true): iterable
     {
         $type = $scope->getType($queryExpr);
 
@@ -290,7 +287,12 @@ final class QueryReflection
 
             // query simulation might lead in a invalid query, skip those
             $error = $this->validateQueryString($normalizedQuery);
-            if ($error === null) {
+            if (
+                $error === null
+                // late abort the query, so we allow the query simulation/validation to throw
+                // UnresolvableQueryException
+                && $resolveNonConstantQueries
+            ) {
                 yield $normalizedQuery;
             }
         }
@@ -373,9 +375,14 @@ final class QueryReflection
             return $leftString . $rightString;
         }
 
-        if ($queryExpr instanceof Encapsed) {
+        if ($queryExpr instanceof InterpolatedString) {
             $string = '';
             foreach ($queryExpr->parts as $part) {
+                if ($part instanceof InterpolatedStringPart) {
+                    $string .= $part->value;
+                    continue;
+                }
+
                 $resolvedPart = $this->resolveQueryStringExpr($part, $scope);
                 if (null === $resolvedPart) {
                     return null;
@@ -386,10 +393,6 @@ final class QueryReflection
             return $string;
         }
 
-        if ($queryExpr instanceof EncapsedStringPart) {
-            return $queryExpr->value;
-        }
-
         $type = $scope->getType($queryExpr);
 
         return QuerySimulation::simulateParamValueType($type, false);
@@ -397,6 +400,7 @@ final class QueryReflection
 
     public static function getQueryType(string $query): ?string
     {
+        $query = QuerySimulation::stripComments($query);
         $query = ltrim($query);
 
         if (1 === preg_match('/^\s*\(?\s*(SELECT|SHOW|UPDATE|INSERT|DELETE|REPLACE|CREATE|CALL|OPTIMIZE)/i', $query, $matches)) {
@@ -404,6 +408,52 @@ final class QueryReflection
         }
 
         return null;
+    }
+
+    public function resolveParameterTypes(Expr $parameter, Scope $scope): Type
+    {
+        if ($parameter instanceof Expr\Array_) {
+            $builder = ConstantArrayTypeBuilder::createEmpty();
+            foreach ($parameter->items as $i => $item) {
+                if ($item->key !== null) {
+                    $builder = null;
+                    break;
+                }
+
+                if ($item->unpack) {
+                    $valueType = $scope->getType($item->value)->getIterableValueType();
+                } else {
+                    $valueType = $scope->getType($item->value);
+                }
+
+                if (! $valueType->isScalar()->yes()) {
+                    $builder = null;
+                    break;
+                }
+
+                $builder->setOffsetValueType(
+                    new ConstantIntegerType($i),
+                    $valueType
+                );
+            }
+
+            if ($builder !== null) {
+                return $builder->getArray();
+            }
+        }
+
+        $parameterType = $scope->getType($parameter);
+        if (
+            $parameter instanceof Expr\Variable
+            && $parameterType->isConstantArray()->no()
+            && $parameterType->isArray()->yes()
+        ) {
+            $builder = ConstantArrayTypeBuilder::createEmpty();
+            $builder->setOffsetValueType(new ConstantIntegerType(0), $parameterType->getIterableValueType());
+            return $builder->getArray();
+        }
+
+        return $parameterType;
     }
 
     /**
@@ -434,8 +484,9 @@ final class QueryReflection
             return $parameters;
         }
 
-        if ($parameterTypes instanceof ConstantArrayType) {
-            return $this->resolveConstantArray($parameterTypes);
+        $arrays = $parameterTypes->getConstantArrays();
+        if (count($arrays) === 1) {
+            return $this->resolveConstantArray($arrays[0]);
         }
 
         return null;
@@ -457,10 +508,10 @@ final class QueryReflection
         foreach ($keyTypes as $i => $keyType) {
             $isOptional = \in_array($i, $optionalKeys, true);
 
-            if ($keyType instanceof ConstantStringType) {
+            if ($keyType->isString()->yes()) {
                 $placeholderName = $keyType->getValue();
 
-                if ('' === $placeholderName) {
+                if (! is_string($placeholderName) || '' === $placeholderName) {
                     throw new ShouldNotHappenException('Empty placeholder name');
                 }
 
@@ -472,7 +523,7 @@ final class QueryReflection
                 );
 
                 $parameters[$param->name] = $param;
-            } elseif ($keyType instanceof ConstantIntegerType) {
+            } elseif ($keyType->isInteger()->yes()) {
                 $param = new Parameter(
                     null,
                     $valueTypes[$i],
@@ -546,6 +597,8 @@ final class QueryReflection
      */
     public function countPlaceholders(string $queryString): int
     {
+        $queryString = QuerySimulation::stripComments($queryString);
+
         // match named placeholders first, as the regex involved is more specific/less error prone
         $namedPlaceholders = $this->extractNamedPlaceholders($queryString);
 
@@ -573,6 +626,7 @@ final class QueryReflection
      */
     public function containsNamedPlaceholders(string $queryString, array $parameters): bool
     {
+        $queryString = QuerySimulation::stripComments($queryString);
         $namedPlaceholders = $this->extractNamedPlaceholders($queryString);
 
         if ([] !== $namedPlaceholders) {
@@ -589,10 +643,12 @@ final class QueryReflection
     }
 
     /**
-     * @return list<string>
+     * @return array<string>
      */
     public function extractNamedPlaceholders(string $queryString): array
     {
+        $queryString = QuerySimulation::stripComments($queryString);
+
         if (preg_match_all(self::REGEX_NAMED_PLACEHOLDER, $queryString, $matches) > 0) {
             $candidates = $matches[0];
 

@@ -30,11 +30,12 @@ class SyntaxErrorInPreparedStatementMethodRuleTest extends RuleTestCase
 
     public function testSyntaxErrorInQueryRule(): void
     {
-        if (\PHP_VERSION_ID < 70400) {
-            self::markTestSkipped('Test requires PHP 7.4.');
-        }
-
         if (MysqliQueryReflector::NAME === getenv('DBA_REFLECTOR')) {
+            $error = "Query error: Unknown column 'asdsa' in 'where clause' (1054).";
+            if ('mariadb' === $_ENV['DBA_PLATFORM']) {
+                $error = "Query error: Unknown column 'asdsa' in 'WHERE' (1054).";
+            }
+
             $expectedErrors = [
                 [
                     "Query error: You have an error in your SQL syntax; check the manual that corresponds to your MySQL/MariaDB server version for the right syntax to use near 'freigabe1u1 FROM ada LIMIT 0' at line 1 (1064).",
@@ -65,7 +66,7 @@ class SyntaxErrorInPreparedStatementMethodRuleTest extends RuleTestCase
                     107,
                 ],
                 [
-                    "Query error: Unknown column 'asdsa' in 'where clause' (1054).",
+                    $error,
                     122,
                 ],
                 [
@@ -169,6 +170,10 @@ LINE 1: SELECT email adaid gesperrt freigabe1u1 FROM ada LIMIT 0
                 ],
             ];
         } elseif (PdoMysqlQueryReflector::NAME === getenv('DBA_REFLECTOR')) {
+            if ('mariadb' === $_ENV['DBA_PLATFORM']) {
+                self::markTestSkipped("We don't test all variants of expectations for all drivers");
+            }
+
             $expectedErrors = [
                 [
                     "Query error: SQLSTATE[42000]: Syntax error or access violation: 1064 You have an error in your SQL syntax; check the manual that corresponds to your MySQL/MariaDB server version for the right syntax to use near 'freigabe1u1 FROM ada LIMIT 0' at line 1 (42000).",
@@ -232,10 +237,6 @@ LINE 1: SELECT email adaid gesperrt freigabe1u1 FROM ada LIMIT 0
 
     public function testBug94()
     {
-        if (\PHP_VERSION_ID < 70400) {
-            self::markTestSkipped('Test requires PHP 7.4.');
-        }
-
         if (MysqliQueryReflector::NAME === getenv('DBA_REFLECTOR')) {
             self::markTestSkipped('Error message different depending on version of the database.');
         } elseif (PdoPgSqlQueryReflector::NAME === getenv('DBA_REFLECTOR')) {
@@ -263,22 +264,25 @@ LINE 1: EXPLAIN INSERT IGNORE INTO `s_articles_supplier` (`id`, `nam...
 
     public function testSyntaxErrorWithInferencePlaceholder()
     {
-        if (\PHP_VERSION_ID < 70400) {
-            self::markTestSkipped('Test requires PHP 7.4.');
-        }
-
         if (MysqliQueryReflector::NAME === getenv('DBA_REFLECTOR')) {
+            $platform = $_ENV['DBA_PLATFORM'];
+
+            $error = "Query error: Unknown column 'does_not_exist' in 'field list' (1054).";
+            if ($platform === "mariadb") {
+                $error = "Query error: Unknown column 'does_not_exist' in 'SELECT' (1054).";
+            }
+
             $expectedErrors = [
                 [
-                    "Query error: Unknown column 'does_not_exist' in 'field list' (1054).",
+                    $error,
                     12,
                 ],
                 [
-                    "Query error: Unknown column 'does_not_exist' in 'field list' (1054).",
+                    $error,
                     36,
                 ],
                 [
-                    "Query error: Unknown column 'does_not_exist' in 'field list' (1054).",
+                    $error,
                     60,
                 ],
             ];
@@ -304,6 +308,10 @@ LINE 1: SELECT email, does_not_exist FROM ada WHERE email = '1970-01...
                 ],
             ];
         } elseif (PdoMysqlQueryReflector::NAME === getenv('DBA_REFLECTOR')) {
+            if ('mariadb' === $_ENV['DBA_PLATFORM']) {
+                self::markTestSkipped("We don't test all variants of expectations for all drivers");
+            }
+
             $expectedErrors = [
                 [
                     "Query error: SQLSTATE[42S22]: Column not found: 1054 Unknown column 'does_not_exist' in 'field list' (42S22).",
@@ -323,5 +331,23 @@ LINE 1: SELECT email, does_not_exist FROM ada WHERE email = '1970-01...
         }
 
         $this->analyse([__DIR__ . '/data/syntax-error-with-inference-placeholder.php'], $expectedErrors);
+    }
+
+    public function testBug749(): void
+    {
+        if (MysqliQueryReflector::NAME !== getenv('DBA_REFLECTOR')) {
+            self::markTestSkipped('This test is only for MySQLi');
+        }
+
+        $this->analyse([__DIR__ . '/data/bug-749.php'], [
+            [
+                "Query error: You have an error in your SQL syntax; check the manual that corresponds to your MySQL/MariaDB server version for the right syntax to use near 'table WHERE err-or id IN ('1') LIMIT 0' at line 1 (1064).",
+                16,
+            ],
+            [
+                "Query error: You have an error in your SQL syntax; check the manual that corresponds to your MySQL/MariaDB server version for the right syntax to use near 'table WHERE a='1970-01-01' AND err-or id IN ('1') LIMIT 0' at line 1 (1064).",
+                30,
+            ],
+        ]);
     }
 }

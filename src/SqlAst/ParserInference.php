@@ -11,6 +11,7 @@ use PHPStan\Type\Constant\ConstantStringType;
 use PHPStan\Type\MixedType;
 use PHPStan\Type\Type;
 use SqlFtw\Parser\Parser;
+use SqlFtw\Parser\ParserConfig;
 use SqlFtw\Platform\Platform;
 use SqlFtw\Session\Session;
 use SqlFtw\Sql\Dml\Query\SelectCommand;
@@ -31,10 +32,7 @@ use staabm\PHPStanDba\UnresolvableAstInQueryException;
 
 final class ParserInference
 {
-    /**
-     * @var SchemaReflection
-     */
-    private $schemaReflection;
+    private SchemaReflection $schemaReflection;
 
     public function __construct(SchemaReflection $schemaReflection)
     {
@@ -44,8 +42,9 @@ final class ParserInference
     public function narrowResultType(string $queryString, ConstantArrayType $resultType): Type
     {
         $platform = Platform::get(Platform::MYSQL, '8.0'); // version defaults to x.x.99 when no patch number is given
+        $config = new ParserConfig($platform);
         $session = new Session($platform);
-        $parser = new Parser($session);
+        $parser = new Parser($config, $session);
 
         //        $queryString = 'SELECT a.email, b.adaid FROM ada a LEFT JOIN ada b ON a.adaid=b.adaid';
 
@@ -57,7 +56,7 @@ final class ParserInference
         $where = null;
         $groupBy = null;
         $joins = [];
-        foreach ($commands as [$command]) {
+        foreach ($commands as $command) {
             // Parser does not throw exceptions. this allows to parse partially invalid code and not fail on first error
             if ($command instanceof SelectCommand) {
                 if (null === $selectColumns) {
@@ -75,6 +74,10 @@ final class ParserInference
                     $fromTable = $this->schemaReflection->getTable($fromName);
                 } elseif ($from instanceof Join) {
                     while (1) {
+                        if (! $from instanceof Join || ! method_exists($from, 'getCondition')) {
+                            return $resultType;
+                        }
+
                         if ($from->getCondition() === null) {
                             if (QueryReflection::getRuntimeConfiguration()->isDebugEnabled()) {
                                 throw new UnresolvableAstInQueryException('Cannot narrow down types null join conditions: ' . $queryString);
@@ -105,14 +108,16 @@ final class ParserInference
                             $joinType = SchemaJoin::TYPE_INNER;
                         }
 
-                        $joinedTable = $this->schemaReflection->getTable($from->getRight()->getTable()->getName());
+                        if ($from->getRight() instanceof TableReferenceTable) {
+                            $joinedTable = $this->schemaReflection->getTable($from->getRight()->getTable()->getName());
 
-                        if ($joinedTable !== null) {
-                            $joins[] = new SchemaJoin(
-                                $joinType,
-                                $joinedTable,
-                                $from->getCondition()
-                            );
+                            if ($joinedTable !== null) {
+                                $joins[] = new SchemaJoin(
+                                    $joinType,
+                                    $joinedTable,
+                                    $from->getCondition()
+                                );
+                            }
                         }
 
                         if ($from->getLeft() instanceof TableReferenceTable) {

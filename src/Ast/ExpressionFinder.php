@@ -10,16 +10,12 @@ use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\AssignOp;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\FunctionLike;
 use PhpParser\NodeFinder;
 use PHPStan\ShouldNotHappenException;
 
 final class ExpressionFinder
 {
-    /**
-     * @var NodeFinder
-     */
-    private $nodeFinder;
+    private NodeFinder $nodeFinder;
 
     public function __construct()
     {
@@ -138,6 +134,10 @@ final class ExpressionFinder
         // move to previous expression
         $previousStatement = $node->getAttribute(PreviousConnectingVisitor::ATTRIBUTE_PREVIOUS);
         if (null !== $previousStatement) {
+            if ($previousStatement instanceof \WeakReference) {
+                $previousStatement = $previousStatement->get();
+            }
+
             if (! $previousStatement instanceof Node) {
                 throw new ShouldNotHappenException();
             }
@@ -148,15 +148,6 @@ final class ExpressionFinder
             }
 
             return $this->findFirstPreviousOfNode($previousStatement, $filter);
-        }
-
-        $parent = $node->getAttribute(PreviousConnectingVisitor::ATTRIBUTE_PARENT);
-        if ($parent instanceof FunctionLike) {
-            return null;
-        }
-
-        if ($parent instanceof Node) {
-            return $this->findFirstPreviousOfNode($parent, $filter);
         }
 
         return null;

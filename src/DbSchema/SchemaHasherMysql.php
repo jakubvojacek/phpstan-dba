@@ -15,10 +15,7 @@ final class SchemaHasherMysql implements SchemaHasher
      */
     private $connection;
 
-    /**
-     * @var string|null
-     */
-    private $hash = null;
+    private ?string $hash = null;
 
     /**
      * @param PDO|mysqli $connection
@@ -39,7 +36,7 @@ final class SchemaHasherMysql implements SchemaHasher
         $maxConcatQuery = 'SET SESSION group_concat_max_len = 1000000';
         $this->connection->query($maxConcatQuery);
 
-        $query = '
+        $query = "
             SELECT
                 MD5(
                     GROUP_CONCAT(
@@ -50,8 +47,8 @@ final class SchemaHasherMysql implements SchemaHasher
             FROM (
                 SELECT
                     CONCAT(
-                        COALESCE(COLUMN_NAME, ""),
-                        COALESCE(EXTRA, ""),
+                        COALESCE(COLUMN_NAME, ''),
+                        COALESCE(EXTRA, ''),
                         COLUMN_TYPE,
                         IS_NULLABLE
                     ) as columns
@@ -62,7 +59,7 @@ final class SchemaHasherMysql implements SchemaHasher
                 ORDER BY table_name, column_name
             ) as InnerSelect
             GROUP BY
-                grouper';
+                grouper";
 
         $hash = '';
         if ($this->connection instanceof PDO) {
@@ -81,7 +78,7 @@ final class SchemaHasherMysql implements SchemaHasher
 
             try {
                 $result = $this->connection->query($query);
-                if ($result instanceof \mysqli_result) {
+                if ($result instanceof \mysqli_result) { // @phpstan-ignore instanceof.alwaysTrue
                     $row = $result->fetch_assoc();
                     $hash = $row['dbsignature'] ?? '';
                 }

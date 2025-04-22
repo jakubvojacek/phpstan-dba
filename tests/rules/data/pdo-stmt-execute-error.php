@@ -127,4 +127,23 @@ class Foo
         $stmt = $pdo->prepare('SELECT email, adaid /* why? ? */ FROM ada /* just ?? :because ?*/ WHERE email = :email -- ?');
         $stmt->execute(['email' => 'a']);
     }
+
+    public function supportNestedQuotes(PDO $pdo)
+    {
+        $stmt = $pdo->prepare(<<<SQL
+SELECT payload ->> '$."dash-separated"' = :value FROM ada WHERE 'foo'
+SQL
+        );
+        $stmt->execute(['value' => 'bar']);
+    }
+
+    public function bug657MultilineString(PDO $pdo)
+    {
+        $stmt = $pdo->prepare(<<<SQL
+UPDATE `ada` SET email = "multi
+line" WHERE `email`= ? AND `email` = "value";
+SQL
+        );
+        $stmt->execute(['value']);
+    }
 }

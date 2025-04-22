@@ -10,10 +10,11 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Name\FullyQualified;
 use PHPStan\Analyser\Scope;
+use PHPStan\Rules\IdentifierRuleError;
 use PHPStan\Rules\Rule;
-use PHPStan\Rules\RuleError;
 use PHPStan\Rules\RuleErrorBuilder;
 use PHPStan\ShouldNotHappenException;
+use PHPStan\Type\MixedType;
 use PHPStan\Type\ObjectType;
 use staabm\PHPStanDba\QueryReflection\PlaceholderValidation;
 use staabm\PHPStanDba\QueryReflection\QueryReflection;
@@ -29,7 +30,7 @@ final class SyntaxErrorInPreparedStatementMethodRule implements Rule
     /**
      * @var list<string>
      */
-    private $classMethods;
+    private array $classMethods;
 
     /**
      * @param list<string> $classMethods
@@ -89,7 +90,7 @@ final class SyntaxErrorInPreparedStatementMethodRule implements Rule
     /**
      * @param MethodCall|New_ $callLike
      *
-     * @return RuleError[]
+     * @return list<IdentifierRuleError>
      */
     private function checkErrors(CallLike $callLike, Scope $scope): array
     {
@@ -107,13 +108,14 @@ final class SyntaxErrorInPreparedStatementMethodRule implements Rule
         }
 
         $parameters = null;
+        $parameterTypes = new MixedType();
         if (\count($args) > 1) {
-            $parameterTypes = $scope->getType($args[1]->value);
+            $parameterTypes = $queryReflection->resolveParameterTypes($args[1]->value, $scope);
             try {
-                $parameters = $queryReflection->resolveParameters($parameterTypes) ?? [];
+                $parameters = $queryReflection->resolveParameters($parameterTypes);
             } catch (UnresolvableQueryException $exception) {
                 return [
-                    RuleErrorBuilder::message($exception->asRuleMessage())->tip($exception::getTip())->line($callLike->getLine())->build(),
+                    RuleErrorBuilder::message($exception->asRuleMessage())->tip($exception::getTip())->identifier('dba.unresolvableQuery')->line($callLike->getStartLine())->build(),
                 ];
             }
         }
@@ -144,13 +146,13 @@ final class SyntaxErrorInPreparedStatementMethodRule implements Rule
 
             $ruleErrors = [];
             foreach ($errors as $error) {
-                $ruleErrors[] = RuleErrorBuilder::message($error)->line($callLike->getLine())->build();
+                $ruleErrors[] = RuleErrorBuilder::message($error)->identifier('dba.syntaxError')->line($callLike->getStartLine())->build();
             }
 
             return $ruleErrors;
         } catch (UnresolvableQueryException $exception) {
             return [
-                RuleErrorBuilder::message($exception->asRuleMessage())->tip($exception::getTip())->line($callLike->getLine())->build(),
+                RuleErrorBuilder::message($exception->asRuleMessage())->tip($exception::getTip())->identifier('dba.unresolvableQuery')->line($callLike->getStartLine())->build(),
             ];
         }
     }

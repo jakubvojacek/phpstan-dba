@@ -31,7 +31,7 @@ class PdoMysqlQueryReflector extends BasePdoQueryReflector
     }
 
     /**
-     * @return PDOException|list<ColumnMeta>|null
+     * @return PDOException|array<ColumnMeta>|null
      */
     protected function simulateQuery(string $queryString)
     {
@@ -99,12 +99,12 @@ class PdoMysqlQueryReflector extends BasePdoQueryReflector
         if (null === $this->stmt) {
             $this->stmt = $this->pdo->prepare(
                 // EXTRA, COLUMN_NAME seems to be nullable in mariadb
-                'SELECT
-                    coalesce(COLUMN_NAME, "") as COLUMN_NAME,
-                    coalesce(EXTRA, "") as EXTRA,
+                "SELECT
+                    coalesce(COLUMN_NAME, '') as COLUMN_NAME,
+                    coalesce(EXTRA, '') as EXTRA,
                     COLUMN_TYPE
                  FROM information_schema.columns
-                 WHERE table_name = ? AND table_schema = DATABASE()'
+                 WHERE table_name = ? AND table_schema = DATABASE()"
             );
         }
 

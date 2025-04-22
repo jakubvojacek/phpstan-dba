@@ -14,7 +14,6 @@ use PHPStan\Reflection\ReflectionProvider;
 use PHPStan\Type\ArrayType;
 use PHPStan\Type\Constant\ConstantBooleanType;
 use PHPStan\Type\Constant\ConstantIntegerType;
-use PHPStan\Type\Constant\ConstantStringType;
 use PHPStan\Type\DynamicMethodReturnTypeExtension;
 use PHPStan\Type\IntegerType;
 use PHPStan\Type\MixedType;
@@ -27,15 +26,9 @@ use staabm\PHPStanDba\UnresolvableQueryException;
 
 final class PdoStatementFetchDynamicReturnTypeExtension implements DynamicMethodReturnTypeExtension
 {
-    /**
-     * @var PhpVersion
-     */
-    private $phpVersion;
+    private PhpVersion $phpVersion;
 
-    /**
-     * @var ReflectionProvider
-     */
-    private $reflectionProvider;
+    private ReflectionProvider $reflectionProvider;
 
     public function __construct(PhpVersion $phpVersion, ReflectionProvider $reflectionProvider)
     {
@@ -55,7 +48,11 @@ final class PdoStatementFetchDynamicReturnTypeExtension implements DynamicMethod
 
     public function getTypeFromMethodCall(MethodReflection $methodReflection, MethodCall $methodCall, Scope $scope): Type
     {
-        $returnType = ParametersAcceptorSelector::selectSingle($methodReflection->getVariants())->getReturnType();
+        $returnType = ParametersAcceptorSelector::selectFromArgs(
+            $scope,
+            $methodCall->getArgs(),
+            $methodReflection->getVariants()
+        )->getReturnType();
 
         try {
             $resultType = $this->inferType($methodReflection, $methodCall, $scope);
@@ -109,8 +106,9 @@ final class PdoStatementFetchDynamicReturnTypeExtension implements DynamicMethod
 
             if (\count($args) > 1) {
                 $classStringType = $scope->getType($args[1]->value);
-                if ($classStringType instanceof ConstantStringType) {
-                    $className = $classStringType->getValue();
+                $strings = $classStringType->getConstantStrings();
+                if (count($strings) === 1) {
+                    $className = $strings[0]->getValue();
                 } else {
                     return null;
                 }

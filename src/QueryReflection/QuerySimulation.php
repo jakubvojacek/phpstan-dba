@@ -5,13 +5,8 @@ declare(strict_types=1);
 namespace staabm\PHPStanDba\QueryReflection;
 
 use PHPStan\ShouldNotHappenException;
-use PHPStan\Type\Accessory\AccessoryType;
-use PHPStan\Type\ArrayType;
-use PHPStan\Type\BooleanType;
 use PHPStan\Type\ConstantScalarType;
 use PHPStan\Type\ErrorType;
-use PHPStan\Type\FloatType;
-use PHPStan\Type\IntegerType;
 use PHPStan\Type\IntersectionType;
 use PHPStan\Type\MixedType;
 use PHPStan\Type\ObjectType;
@@ -39,26 +34,19 @@ final class QuerySimulation
             return (string) $paramType->getValue();
         }
 
-        if ($paramType instanceof ArrayType) {
-            return self::simulateParamValueType($paramType->getItemType(), $preparedParam);
+        if ($paramType->isIterable()->yes()) {
+            return self::simulateParamValueType($paramType->getIterableValueType(), $preparedParam);
         }
 
-        $integerType = new IntegerType();
-        if ($integerType->isSuperTypeOf($paramType)->yes()) {
+        if (
+            $paramType->isInteger()->yes()
+            || $paramType->isBoolean()->yes()
+            || $paramType->isNumericString()->yes()
+        ) {
             return '1';
         }
 
-        $booleanType = new BooleanType();
-        if ($booleanType->isSuperTypeOf($paramType)->yes()) {
-            return '1';
-        }
-
-        if ($paramType->isNumericString()->yes()) {
-            return '1';
-        }
-
-        $floatType = new FloatType();
-        if ($floatType->isSuperTypeOf($paramType)->yes()) {
+        if ($paramType->isFloat()->yes()) {
             return '1.0';
         }
 
@@ -100,19 +88,6 @@ final class QuerySimulation
             }
 
             return null;
-        }
-
-        if ($paramType instanceof IntersectionType) {
-            foreach ($paramType->getTypes() as $type) {
-                if ($type instanceof AccessoryType) {
-                    continue;
-                }
-
-                $simulated = self::simulateParamValueType($type, $preparedParam);
-                if (null !== $simulated) {
-                    return $simulated;
-                }
-            }
         }
 
         // all types which we can't simulate and render a query unresolvable at analysis time
@@ -169,13 +144,17 @@ final class QuerySimulation
     }
 
     /**
-     * @see https://larrysteinle.com/2011/02/09/use-regular-expressions-to-clean-sql-statements/
      * @see https://github.com/decemberster/sql-strip-comments/blob/3bef3558211a6f6191d2ad0ceb8577eda39dd303/index.js
      */
     public static function stripComments(string $query): string
     {
+        // one line comments: from "#" to end of line,
+        // one line comments: from "--" to end of line,
+        // or multiline: from "/*" to "*/".
+        // string literals with sql comments omited
+        // nested comments are not supported
         return trim(preg_replace_callback(
-            '/("(""|[^"])*")|(\'(\'\'|[^\'])*\')|(--[^\n\r]*)|(\/\*[\w\W]*?(?=\*\/)\*\/)/m',
+            '/("(""|[^"])*")|(\'(\'\'|[^\'])*\')|((?:--|#)[^\n\r]*)|(\/\*[\w\W]*?(?=\*\/)\*\/)/m',
             static function (array $matches): string {
                 $match = $matches[0];
                 $matchLength = \strlen($match);

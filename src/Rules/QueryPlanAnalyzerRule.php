@@ -10,8 +10,8 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Name\FullyQualified;
 use PHPStan\Analyser\Scope;
+use PHPStan\Rules\IdentifierRuleError;
 use PHPStan\Rules\Rule;
-use PHPStan\Rules\RuleError;
 use PHPStan\Rules\RuleErrorBuilder;
 use PHPStan\ShouldNotHappenException;
 use PHPStan\Type\ObjectType;
@@ -29,7 +29,7 @@ final class QueryPlanAnalyzerRule implements Rule
     /**
      * @var list<string>
      */
-    private $classMethods;
+    private array $classMethods;
 
     /**
      * @param list<string> $classMethods
@@ -92,7 +92,7 @@ final class QueryPlanAnalyzerRule implements Rule
             return $this->analyze($callLike, $scope);
         } catch (UnresolvableQueryException $exception) {
             return [
-                RuleErrorBuilder::message($exception->asRuleMessage())->tip($exception::getTip())->line($callLike->getLine())->build(),
+                RuleErrorBuilder::message($exception->asRuleMessage())->tip($exception::getTip())->identifier('dba.unresolvableQuery')->line($callLike->getStartLine())->build(),
             ];
         }
     }
@@ -100,7 +100,7 @@ final class QueryPlanAnalyzerRule implements Rule
     /**
      * @param MethodCall|New_ $callLike
      *
-     * @return RuleError[]
+     * @return list<IdentifierRuleError>
      */
     private function analyze(CallLike $callLike, Scope $scope): array
     {
@@ -123,7 +123,7 @@ final class QueryPlanAnalyzerRule implements Rule
 
         $parameterTypes = null;
         if (\count($args) > 1) {
-            $parameterTypes = $scope->getType($args[1]->value);
+            $parameterTypes = $queryReflection->resolveParameterTypes($args[1]->value, $scope);
         }
 
         $ruleErrors = [];
@@ -144,7 +144,8 @@ final class QueryPlanAnalyzerRule implements Rule
                             $table
                         )
                     )
-                        ->line($callLike->getLine())
+                        ->identifier('dba.missingIndex')
+                        ->line($callLike->getStartLine())
                         ->tip('see Mysql Docs https://dev.mysql.com/doc/refman/8.0/en/select-optimization.html')
                         ->build();
                 }
@@ -156,7 +157,8 @@ final class QueryPlanAnalyzerRule implements Rule
                             $table
                         )
                     )
-                        ->line($callLike->getLine())
+                        ->identifier('dba.tableScan')
+                        ->line($callLike->getStartLine())
                         ->tip('see Mysql Docs https://dev.mysql.com/doc/refman/8.0/en/table-scan-avoidance.html')
                         ->build();
                 }
@@ -168,7 +170,8 @@ final class QueryPlanAnalyzerRule implements Rule
                             $table
                         )
                     )
-                        ->line($callLike->getLine())
+                        ->identifier('dba.unindexedReads')
+                        ->line($callLike->getStartLine())
                         ->tip('see Mysql Docs https://dev.mysql.com/doc/refman/8.0/en/select-optimization.html')
                         ->build();
                 }

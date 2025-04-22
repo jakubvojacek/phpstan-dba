@@ -49,17 +49,15 @@ jobs:
                   php-version: "${{ matrix.php-version }}"
                   coverage: none
 
-            - uses: "ramsey/composer-install@v2"
+            - uses: "ramsey/composer-install@v3"
               with:
                 composer-options: "--prefer-dist --no-progress"
 
             - name: Install sqlftw/sqlftw (optional dependency)
               run: composer require sqlftw/sqlftw --ignore-platform-req=php+
-              if: "${{matrix.php-version != '7.2' && matrix.php-version != '7.3'}}"
 
             - name: Install doctrine/dbal (optional dependency)
-              run: composer require doctrine/dbal --ignore-platform-req=php+
-              if: "${{matrix.php-version != '7.2'}}"
+              run: composer require doctrine/dbal:^3 --ignore-platform-req=php+
 
             - name: Setup Problem Matchers for PHPUnit
               run: echo "::add-matcher::${{ runner.tool_cache }}/phpunit.json"

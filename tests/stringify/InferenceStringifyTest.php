@@ -12,7 +12,7 @@ class InferenceStringifyTest extends TypeInferenceTestCase
     {
         yield from $this->gatherAssertTypes(__DIR__ . '/data/stringify.php');
 
-        if (\PHP_VERSION_ID >= 70400 && 'pdo-pgsql' !== getenv('DBA_REFLECTOR')) {
+        if ('pdo-pgsql' !== getenv('DBA_REFLECTOR')) {
             yield from $this->gatherAssertTypes(__DIR__ . '/data/ast-narrowed-stringify.php');
         }
     }
@@ -33,7 +33,6 @@ class InferenceStringifyTest extends TypeInferenceTestCase
     public static function getAdditionalConfigFiles(): array
     {
         return [
-            __DIR__ . '/../../config/stubFiles.neon',
             __DIR__ . '/../../config/extensions.neon',
         ];
     }

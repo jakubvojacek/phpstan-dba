@@ -17,7 +17,7 @@ use staabm\PHPStanDba\UnresolvableQueryStringTypeException;
 class QueryPlanAnalyzerRuleTest extends RuleTestCase
 {
     /**
-     * @var bool|0|positive-int
+     * @var bool
      */
     private $numberOfAllowedUnindexedReads;
 
@@ -60,10 +60,6 @@ class QueryPlanAnalyzerRuleTest extends RuleTestCase
 
         if (ReflectorFactory::MODE_RECORDING !== getenv('DBA_MODE')) {
             self::markTestSkipped('query plan analyzer requires a active database connection');
-        }
-
-        if (\PHP_VERSION_ID < 70300) {
-            self::markTestSkipped('not yet supported on php < 7.3');
         }
 
         $this->numberOfAllowedUnindexedReads = true;
@@ -109,10 +105,6 @@ class QueryPlanAnalyzerRuleTest extends RuleTestCase
 
         if (ReflectorFactory::MODE_RECORDING !== getenv('DBA_MODE')) {
             self::markTestSkipped('query plan analyzer requires a active database connection');
-        }
-
-        if (\PHP_VERSION_ID < 70300) {
-            self::markTestSkipped('not yet supported on php < 7.3');
         }
 
         $this->debugMode = true;

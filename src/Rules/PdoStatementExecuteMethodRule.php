@@ -9,8 +9,8 @@ use PhpParser\Node;
 use PhpParser\Node\Expr\MethodCall;
 use PHPStan\Analyser\Scope;
 use PHPStan\Reflection\MethodReflection;
+use PHPStan\Rules\IdentifierRuleError;
 use PHPStan\Rules\Rule;
-use PHPStan\Rules\RuleError;
 use PHPStan\Rules\RuleErrorBuilder;
 use PHPStan\Type\Constant\ConstantArrayType;
 use PHPStan\Type\Constant\ConstantIntegerType;
@@ -55,7 +55,7 @@ final class PdoStatementExecuteMethodRule implements Rule
     }
 
     /**
-     * @return RuleError[]
+     * @return list<IdentifierRuleError>
      */
     private function checkErrors(MethodReflection $methodReflection, MethodCall $methodCall, Scope $scope): array
     {
@@ -90,14 +90,14 @@ final class PdoStatementExecuteMethodRule implements Rule
 
             $parameterTypes = new ConstantArrayType($parameterKeys, $parameterValues);
         } else {
-            $parameterTypes = $scope->getType($args[0]->value);
+            $parameterTypes = $queryReflection->resolveParameterTypes($args[0]->value, $scope);
         }
 
         try {
             $parameters = $queryReflection->resolveParameters($parameterTypes) ?? [];
         } catch (UnresolvableQueryException $exception) {
             return [
-                RuleErrorBuilder::message($exception->asRuleMessage())->tip($exception::getTip())->line($methodCall->getLine())->build(),
+                RuleErrorBuilder::message($exception->asRuleMessage())->tip($exception::getTip())->identifier('dba.unresolvableQuery')->line($methodCall->getStartLine())->build(),
             ];
         }
 
@@ -110,13 +110,13 @@ final class PdoStatementExecuteMethodRule implements Rule
             }
         } catch (UnresolvableQueryException $exception) {
             return [
-                RuleErrorBuilder::message($exception->asRuleMessage())->tip($exception::getTip())->line($methodCall->getLine())->build(),
+                RuleErrorBuilder::message($exception->asRuleMessage())->tip($exception::getTip())->identifier('dba.unresolvableQuery')->line($methodCall->getStartLine())->build(),
             ];
         }
 
         $ruleErrors = [];
         foreach ($errors as $error) {
-            $ruleErrors[] = RuleErrorBuilder::message($error)->line($methodCall->getLine())->build();
+            $ruleErrors[] = RuleErrorBuilder::message($error)->identifier('dba.invalidPlaceholder')->line($methodCall->getStartLine())->build();
         }
 
         return $ruleErrors;

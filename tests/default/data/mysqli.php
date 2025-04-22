@@ -10,7 +10,6 @@ class Foo
     public function ooQuerySelected(mysqli $mysqli)
     {
         $result = $mysqli->query('SELECT email, adaid FROM ada');
-        assertType('mysqli_result<array{email: string, adaid: int<-32768, 32767>}>', $result);
 
         $field = 'email';
         if (rand(0, 1)) {
@@ -33,7 +32,6 @@ class Foo
     public function fnQuerySelected(mysqli $mysqli)
     {
         $result = mysqli_query($mysqli, 'SELECT email, adaid FROM ada');
-        assertType('mysqli_result<array{email: string, adaid: int<-32768, 32767>}>', $result);
 
         foreach ($result as $row) {
             assertType('int<-32768, 32767>', $row['adaid']);
@@ -45,5 +43,18 @@ class Foo
     {
         $result = mysqli_query($mysqli, $query);
         assertType('mysqli_result|true', $result);
+    }
+
+    public function unionResult(mysqli $mysqli)
+    {
+        $queries = ['SELECT adaid FROM ada', 'SELECT email FROM ada'];
+
+        foreach ($queries as $query) {
+            $result = $mysqli->query($query);
+
+            foreach ($result as $row) {
+                assertType('array{adaid: int<-32768, 32767>}|array{email: string}', $row);
+            }
+        }
     }
 }

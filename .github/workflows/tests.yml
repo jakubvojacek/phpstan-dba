@@ -20,22 +20,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - php-version: "7.2"
-            db-image: 'mysql:5.7'
-            reflector: "pdo-mysql"
-            mode: "recording"
-            dependencies: "lowest"
+          #- php-version: "7.4"
+          #  db-image: 'mysql:8.0'
+          #  reflector: "pdo-mysql"
+          #  mode: "recording"
+          #  dependencies: "lowest"
 
-          - php-version: "7.2"
-            db-image: 'mysql:5.7'
-            reflector: "pdo-mysql"
-            mode: "recording"
-            dependencies: "highest"
-          - php-version: "7.3"
-            db-image: 'mysql:5.7'
-            reflector: "pdo-mysql"
-            mode: "recording"
-            dependencies: "highest"
           - php-version: "7.4"
             db-image: 'mysql:8.0'
             reflector: "pdo-mysql"
@@ -59,6 +49,7 @@ jobs:
             dependencies: "highest"
           - php-version: '8.1'
             db-image: 'mariadb:latest'
+            platform: 'mariadb'
             reflector: "mysqli"
             mode: "recording"
             dependencies: "highest"
@@ -70,6 +61,7 @@ jobs:
             dependencies: "highest"
           - php-version: '8.2'
             db-image: 'mariadb:latest'
+            platform: 'mariadb'
             reflector: "mysqli"
             mode: "recording"
             dependencies: "highest"
@@ -92,6 +84,7 @@ jobs:
             dependencies: "highest"
 
     env:
+      DBA_PLATFORM: ${{ matrix.platform }}
       DBA_REFLECTOR: ${{ matrix.reflector }}
       DBA_MODE: ${{ matrix.mode }}
 
@@ -117,7 +110,7 @@ jobs:
         php-version: "${{ matrix.php-version }}"
         coverage: none
 
-    - uses: "ramsey/composer-install@v2"
+    - uses: "ramsey/composer-install@v3"
       with:
         dependency-versions: "${{ matrix.dependencies }}"
         # ignore php8.2 requirement error https://github.com/sebastianbergmann/phpunit/issues/5033
@@ -125,11 +118,9 @@ jobs:
 
     - name: Install sqlftw/sqlftw (optional dependency)
       run: composer require sqlftw/sqlftw --ignore-platform-req=php+
-      if: "${{matrix.php-version != '7.2' && matrix.php-version != '7.3'}}"
 
     - name: Install doctrine/dbal (optional dependency)
-      run: composer require doctrine/dbal --ignore-platform-req=php+
-      if: "${{matrix.php-version != '7.2'}}"
+      run: composer require doctrine/dbal:^3 --ignore-platform-req=php+
 
     - name: Setup Problem Matchers for PHPUnit
       run: echo "::add-matcher::${{ runner.tool_cache }}/phpunit.json"
@@ -174,18 +165,16 @@ jobs:
         php-version: "${{ matrix.php-version }}"
         coverage: none
 
-    - uses: "ramsey/composer-install@v2"
+    - uses: "ramsey/composer-install@v3"
       with:
         # ignore php8.2 requirement error https://github.com/sebastianbergmann/phpunit/issues/5033
         composer-options: "--ignore-platform-req=php+"
 
     - name: Install sqlftw/sqlftw (optional dependency)
       run: composer require sqlftw/sqlftw --ignore-platform-req=php+
-      if: "${{matrix.php-version != '7.2' && matrix.php-version != '7.3'}}"
 
     - name: Install doctrine/dbal (optional dependency)
-      run: composer require doctrine/dbal --ignore-platform-req=php+
-      if: "${{matrix.php-version != '7.2'}}"
+      run: composer require doctrine/dbal:^3 --ignore-platform-req=php+
 
     - name: Setup Problem Matchers for PHPUnit
       run: echo "::add-matcher::${{ runner.tool_cache }}/phpunit.json"
